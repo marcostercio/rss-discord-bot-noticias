@@ -30,7 +30,8 @@ jobs:
 
       - run: node rss.js
         env:
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          WEBHOOK_1: ${{ secrets.WEBHOOK_1 }}
+          WEBHOOK_2: ${{ secrets.WEBHOOK_2 }}
           RSS_URLS: ${{ secrets.RSS_URLS }}
 
       - name: Save state
