@@ -11,21 +11,22 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - run: npm install
       - run: node rss.js
         env:
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          RSS_URL: ${{ secrets.RSS_URL }}
+          RSS_URLS: ${{ secrets.RSS_URLS }}
 
       - name: Save state
         run: |
           git config user.name "bot"
           git config user.email "bot@github.com"
-          git add last.json || true
-          git commit -m "update" || true
+          git add sent.json || true
+          git commit -m "update sent" || true
           git push
