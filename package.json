@@ -1,0 +1,13 @@
+{
+  "name": "rss-discord-bot",
+  "version": "1.0.0",
+  "description": "RSS to Discord webhook",
+  "main": "rss.js",
+  "scripts": {
+    "start": "node rss.js"
+  },
+  "dependencies": {
+    "rss-parser": "^3.13.0",
+    "node-fetch": "^2.6.7"
+  }
+}
