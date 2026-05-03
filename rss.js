@@ -18,8 +18,6 @@ const FEEDS = [
     url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCI1FHmMbh27WuxHjGXyn2ww",
     webhook: process.env.WEBHOOK_1
   },
-
-  // 👇 GRAN CURSOS (OUTRO WEBHOOK)
   {
     url: "https://blog.grancursosonline.com.br/feed/",
     webhook: process.env.WEBHOOK_2
@@ -65,7 +63,9 @@ const FEEDS = [
             date,
             isoDate: date.toISOString(),
             source: item.link ? new URL(item.link).hostname : "desconhecido",
-            description: item.contentSnippet || item.content || ''
+            description: item.contentSnippet || item.content || '',
+            content: item.content || '',
+            enclosure: item.enclosure || null
           };
         })
         .sort((a, b) => b.date - a.date);
@@ -84,6 +84,25 @@ const FEEDS = [
       for (const item of newItems.reverse()) {
         console.log(`📨 Enviando: ${item.title}`);
 
+        // 🖼️ tentar pegar imagem
+        let image = null;
+
+        // 1. enclosure (melhor caso)
+        if (item.enclosure && item.enclosure.url) {
+          image = item.enclosure.url;
+        }
+
+        // 2. pegar <img> do HTML
+        if (!image && item.content) {
+          const match = item.content.match(/<img.*?src="(.*?)"/i);
+          if (match && match[1]) {
+            image = match[1];
+          }
+        }
+
+        // debug imagem
+        console.log("🖼️ Imagem:", image ? "OK" : "NÃO ENCONTRADA");
+
         try {
           const res = await fetch(webhook, {
             method: 'POST',
@@ -98,7 +117,8 @@ const FEEDS = [
                   footer: {
                     text: `🌐 ${item.source}`
                   },
-                  timestamp: item.isoDate
+                  timestamp: item.isoDate,
+                  ...(image && { image: { url: image } })
                 }
               ]
             })
