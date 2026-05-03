@@ -72,7 +72,7 @@ const FEEDS = [
 
       const newItems = items
         .filter(item => item.link && !sentLinks.includes(item.link))
-        .slice(0, 3); // evita flood
+        .slice(0, 3);
 
       console.log(`🆕 Novos itens: ${newItems.length}`);
 
@@ -84,15 +84,14 @@ const FEEDS = [
       for (const item of newItems.reverse()) {
         console.log(`📨 Enviando: ${item.title}`);
 
-        // 🖼️ tentar pegar imagem
         let image = null;
 
-        // 1. enclosure (melhor caso)
+        // 1. enclosure
         if (item.enclosure && item.enclosure.url) {
           image = item.enclosure.url;
         }
 
-        // 2. pegar <img> do HTML
+        // 2. <img> no conteúdo
         if (!image && item.content) {
           const match = item.content.match(/<img.*?src="(.*?)"/i);
           if (match && match[1]) {
@@ -100,7 +99,29 @@ const FEEDS = [
           }
         }
 
-        // debug imagem
+        // 3. YouTube thumbnail
+        if (!image && item.link && item.link.includes("youtube.com")) {
+          const match = item.link.match(/v=([^&]+)/);
+          if (match && match[1]) {
+            image = `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
+          }
+        }
+
+        // 4. OG IMAGE (pegar direto do site)
+        if (!image && item.link) {
+          try {
+            const res = await fetch(item.link, { timeout: 5000 });
+            const html = await res.text();
+
+            const ogMatch = html.match(/<meta property="og:image" content="(.*?)"/i);
+            if (ogMatch && ogMatch[1]) {
+              image = ogMatch[1];
+            }
+          } catch (e) {
+            console.log("⚠️ Erro ao buscar OG image");
+          }
+        }
+
         console.log("🖼️ Imagem:", image ? "OK" : "NÃO ENCONTRADA");
 
         try {
