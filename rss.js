@@ -2,130 +2,134 @@ const Parser = require('rss-parser');
 const fetch = require('node-fetch');
 const fs = require('fs');
 
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
-
-// 🔥 tratamento seguro do RSS_URLS
-const RSS_URLS = (process.env.RSS_URLS || "")
-  .split(',')
-  .map(url => url.trim())
-  .filter(url => url.length > 0);
-
 const parser = new Parser();
 
-(async () => {
-  console.log("🚀 Iniciando script...");
+// 🔥 CONFIGURAÇÃO (Gran Cursos separado)
+const FEEDS = [
+  {
+    url: "https://tecnoblog.net/feed/",
+    webhook: process.env.WEBHOOK_1
+  },
+  {
+    url: "https://www.metropoles.com/feed",
+    webhook: process.env.WEBHOOK_1
+  },
+  {
+    url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCI1FHmMbh27WuxHjGXyn2ww",
+    webhook: process.env.WEBHOOK_1
+  },
 
-  console.log("🔧 RSS_URLS RAW:", process.env.RSS_URLS);
-  console.log("🔧 RSS_URLS PROCESSADO:", RSS_URLS);
-
-  if (RSS_URLS.length === 0) {
-    console.log("❌ Nenhum RSS configurado. Verifique o secret RSS_URLS.");
-    return;
+  // 👇 GRAN CURSOS (OUTRO WEBHOOK)
+  {
+    url: "https://blog.grancursosonline.com.br/feed/",
+    webhook: process.env.WEBHOOK_2
   }
+];
+
+(async () => {
+  console.log("🚀 Iniciando bot RSS...\n");
 
   let sentLinks = [];
 
+  // 📂 carregar histórico
   if (fs.existsSync('sent.json')) {
     sentLinks = JSON.parse(fs.readFileSync('sent.json'));
-    console.log("📁 Histórico carregado:", sentLinks.length);
+    console.log(`📁 Histórico carregado: ${sentLinks.length} itens\n`);
   } else {
-    console.log("📁 Nenhum histórico encontrado");
+    console.log("📁 Nenhum histórico encontrado\n");
   }
 
-  let allItems = [];
+  for (const feedConfig of FEEDS) {
+    const { url, webhook } = feedConfig;
 
-  for (const url of RSS_URLS) {
+    console.log("====================================");
+    console.log(`🔎 FEED: ${url}`);
+
+    if (!webhook) {
+      console.log("❌ Webhook não configurado\n");
+      continue;
+    }
+
     try {
-      console.log(`🔎 Lendo feed: ${url}`);
-
       const feed = await parser.parseURL(url);
 
-      console.log(`✅ Feed carregado: ${feed.title}`);
       console.log(`📊 Itens encontrados: ${feed.items.length}`);
 
-      const items = feed.items.map(item => {
-        const date = new Date(item.pubDate || Date.now());
+      const items = feed.items
+        .map(item => {
+          const date = new Date(item.pubDate || item.isoDate || Date.now());
 
-        return {
-          title: item.title || "Sem título",
-          link: item.link,
-          date: date,
-          isoDate: date.toISOString(),
-          source: item.link ? new URL(item.link).hostname : "desconhecido",
-          description: item.contentSnippet || item.content || ''
-        };
-      });
-
-      allItems = allItems.concat(items);
-
-    } catch (err) {
-      console.log(`❌ Erro no feed: ${url}`);
-      console.log("Mensagem:", err.message);
-    }
-  }
-
-  console.log("📦 Total de itens coletados:", allItems.length);
-
-  if (allItems.length === 0) {
-    console.log("❌ Nenhum item encontrado em nenhum feed");
-    return;
-  }
-
-  // ordenar por mais recente
-  allItems.sort((a, b) => b.date - a.date);
-
-  console.log("🆕 Top 3 itens:");
-  allItems.slice(0, 3).forEach((item, i) => {
-    console.log(`${i + 1}. ${item.title}`);
-  });
-
-  // 🔥 modo debug (força envio)
-  const newItems = allItems.slice(0, 3);
-
-  console.log("📤 Enviando itens:", newItems.length);
-
-  for (const item of newItems.reverse()) {
-    try {
-      console.log("📨 Enviando:", item.title);
-
-      const response = await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          embeds: [
-            {
-              title: item.title,
-              url: item.link,
-              description: item.description.substring(0, 200) || "Nova notícia 🚀",
-              color: 5814783,
-              footer: {
-                text: `🌐 ${item.source}`
-              },
-              timestamp: item.isoDate
-            }
-          ]
+          return {
+            title: item.title || "Sem título",
+            link: item.link,
+            date,
+            isoDate: date.toISOString(),
+            source: item.link ? new URL(item.link).hostname : "desconhecido",
+            description: item.contentSnippet || item.content || ''
+          };
         })
-      });
+        .sort((a, b) => b.date - a.date);
 
-      console.log("📡 Status webhook:", response.status);
+      const newItems = items
+        .filter(item => item.link && !sentLinks.includes(item.link))
+        .slice(0, 3); // evita flood
 
-      if (!response.ok) {
-        const text = await response.text();
-        console.log("❌ Erro resposta:", text);
+      console.log(`🆕 Novos itens: ${newItems.length}`);
+
+      if (newItems.length === 0) {
+        console.log("⚠️ Nada novo\n");
+        continue;
       }
 
-    } catch (err) {
-      console.log("❌ Erro ao enviar:", err.message);
-    }
+      for (const item of newItems.reverse()) {
+        console.log(`📨 Enviando: ${item.title}`);
 
-    sentLinks.push(item.link);
+        try {
+          const res = await fetch(webhook, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              embeds: [
+                {
+                  title: item.title,
+                  url: item.link,
+                  description: item.description.substring(0, 200),
+                  color: 5814783,
+                  footer: {
+                    text: `🌐 ${item.source}`
+                  },
+                  timestamp: item.isoDate
+                }
+              ]
+            })
+          });
+
+          console.log(`📡 Status: ${res.status}`);
+
+          if (res.status === 204 || res.status === 200) {
+            sentLinks.push(item.link);
+          } else {
+            const text = await res.text();
+            console.log("❌ Erro resposta:", text);
+          }
+
+        } catch (err) {
+          console.log("❌ Erro ao enviar:", err.message);
+        }
+      }
+
+      console.log("");
+
+    } catch (err) {
+      console.log("❌ Erro no feed:");
+      console.log(err.message + "\n");
+    }
   }
 
-  // manter histórico leve
-  sentLinks = sentLinks.slice(-100);
-
+  // 💾 salvar histórico
+  sentLinks = sentLinks.slice(-200);
   fs.writeFileSync('sent.json', JSON.stringify(sentLinks, null, 2));
 
-  console.log("💾 Histórico salvo:", sentLinks.length);
-  console.log("✅ Finalizado");
+  console.log("💾 Histórico salvo");
+  console.log("✅ Finalizado\n");
 })();
