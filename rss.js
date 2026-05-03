@@ -3,12 +3,25 @@ const fetch = require('node-fetch');
 const fs = require('fs');
 
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
-const RSS_URLS = process.env.RSS_URLS.split(',');
+
+// 🔥 tratamento seguro do RSS_URLS
+const RSS_URLS = (process.env.RSS_URLS || "")
+  .split(',')
+  .map(url => url.trim())
+  .filter(url => url.length > 0);
 
 const parser = new Parser();
 
 (async () => {
   console.log("🚀 Iniciando script...");
+
+  console.log("🔧 RSS_URLS RAW:", process.env.RSS_URLS);
+  console.log("🔧 RSS_URLS PROCESSADO:", RSS_URLS);
+
+  if (RSS_URLS.length === 0) {
+    console.log("❌ Nenhum RSS configurado. Verifique o secret RSS_URLS.");
+    return;
+  }
 
   let sentLinks = [];
 
@@ -25,7 +38,7 @@ const parser = new Parser();
     try {
       console.log(`🔎 Lendo feed: ${url}`);
 
-      const feed = await parser.parseURL(url.trim());
+      const feed = await parser.parseURL(url);
 
       console.log(`✅ Feed carregado: ${feed.title}`);
       console.log(`📊 Itens encontrados: ${feed.items.length}`);
@@ -47,25 +60,29 @@ const parser = new Parser();
 
     } catch (err) {
       console.log(`❌ Erro no feed: ${url}`);
-      console.log(err.message);
+      console.log("Mensagem:", err.message);
     }
   }
 
   console.log("📦 Total de itens coletados:", allItems.length);
 
+  if (allItems.length === 0) {
+    console.log("❌ Nenhum item encontrado em nenhum feed");
+    return;
+  }
+
   // ordenar por mais recente
   allItems.sort((a, b) => b.date - a.date);
 
-  // DEBUG: mostrar primeiros itens
-  console.log("🆕 Top 5 itens:");
-  allItems.slice(0, 5).forEach((item, i) => {
+  console.log("🆕 Top 3 itens:");
+  allItems.slice(0, 3).forEach((item, i) => {
     console.log(`${i + 1}. ${item.title}`);
   });
 
-  // FORÇAR ENVIO (DEBUG MODE)
+  // 🔥 modo debug (força envio)
   const newItems = allItems.slice(0, 3);
 
-  console.log("📤 Itens que serão enviados:", newItems.length);
+  console.log("📤 Enviando itens:", newItems.length);
 
   for (const item of newItems.reverse()) {
     try {
@@ -90,11 +107,11 @@ const parser = new Parser();
         })
       });
 
-      console.log("📡 Status do webhook:", response.status);
+      console.log("📡 Status webhook:", response.status);
 
       if (!response.ok) {
         const text = await response.text();
-        console.log("❌ Erro resposta webhook:", text);
+        console.log("❌ Erro resposta:", text);
       }
 
     } catch (err) {
@@ -104,11 +121,11 @@ const parser = new Parser();
     sentLinks.push(item.link);
   }
 
-  // salva histórico
+  // manter histórico leve
   sentLinks = sentLinks.slice(-100);
 
   fs.writeFileSync('sent.json', JSON.stringify(sentLinks, null, 2));
 
-  console.log("💾 Histórico atualizado:", sentLinks.length);
+  console.log("💾 Histórico salvo:", sentLinks.length);
   console.log("✅ Finalizado");
 })();
